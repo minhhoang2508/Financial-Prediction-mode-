@@ -26,27 +26,6 @@ except:
     except:
         print("Không thể thiết lập locale tiếng Việt")
 
-# Định nghĩa hàm get_rating ở cấp độ module
-def get_rating(score, stability, confidence):
-    if confidence < 0.3:
-        return "Không đủ dữ liệu đáng tin cậy"
-    
-    if score < -0.2:
-        return "Không khuyến nghị"
-    elif score < 0:
-        return "Nên theo dõi"
-    elif score < 0.05:
-        if stability > 0.7:
-            return "Trung lập (ổn định)"
-        else:
-            return "Trung lập"
-    elif score < 0.1:
-        return "Khả quan"
-    elif score < 0.2:
-        return "Tích cực"
-    else:
-        return "Rất tích cực"
-
 # Import mô hình tiên tiến
 try:
     from src.advanced_model import forecast_financial_indicator, AdvancedFinancialForecaster
@@ -318,145 +297,68 @@ def generate_advanced_report(results):
                             if abs(prof_change) < 0.1:  # Lợi nhuận ổn định
                                 stability += 0.5
                             
-                            # Thêm các chỉ số ROE, ROA, biên lợi nhuận vào đánh giá nếu có
-                            roe_ind = "ROE - Tỷ suất lợi nhuận trên vốn chủ sở hữu"
-                            roa_ind = "ROA - Tỷ suất lợi nhuận trên tổng tài sản"
-                            gross_margin_ind = "Biên lợi nhuận gộp"
-                            net_margin_ind = "Biên lợi nhuận ròng"
+                            average_confidence = (rev_confidence + prof_confidence) / 2
                             
-                            efficiency_score = 0
-                            efficiency_count = 0
-                            
-                            # Kiểm tra và thêm điểm cho ROE nếu có
-                            if roe_ind in data and data[roe_ind]:
-                                roe_info = data[roe_ind]
-                                roe_score = roe_info['change_rate'] * roe_info['confidence']
-                                efficiency_score += roe_score
-                                efficiency_count += 1
-                            
-                            # Kiểm tra và thêm điểm cho ROA nếu có
-                            if roa_ind in data and data[roa_ind]:
-                                roa_info = data[roa_ind]
-                                roa_score = roa_info['change_rate'] * roa_info['confidence']
-                                efficiency_score += roa_score
-                                efficiency_count += 1
-                            
-                            # Kiểm tra và thêm điểm cho biên lợi nhuận gộp nếu có
-                            if gross_margin_ind in data and data[gross_margin_ind]:
-                                gross_margin_info = data[gross_margin_ind]
-                                gross_margin_score = gross_margin_info['change_rate'] * gross_margin_info['confidence']
-                                efficiency_score += gross_margin_score
-                                efficiency_count += 1
-                            
-                            # Kiểm tra và thêm điểm cho biên lợi nhuận ròng nếu có
-                            if net_margin_ind in data and data[net_margin_ind]:
-                                net_margin_info = data[net_margin_ind]
-                                net_margin_score = net_margin_info['change_rate'] * net_margin_info['confidence']
-                                efficiency_score += net_margin_score * 1.5  # Trọng số cao hơn cho biên lợi nhuận ròng
-                                efficiency_count += 1.5
-                            
-                            # Tính điểm hiệu quả trung bình nếu có dữ liệu
-                            if efficiency_count > 0:
-                                avg_efficiency_score = efficiency_score / efficiency_count
-                                # Thêm điểm hiệu quả vào tổng điểm với trọng số 0.3
-                                total_score = total_score * 0.7 + avg_efficiency_score * 0.3
-                            
-                            # Xác định xếp hạng
-                            rating = get_rating(total_score, stability, (rev_confidence + prof_confidence) / 2)
-                            
-                            # Thêm vào danh sách đề xuất
-                            recommendations.append((company_code, rating, total_score))
+                            recommendations.append((company_code, total_score, stability, average_confidence))
                         else:
                             # Đối với công ty có độ tin cậy thấp, thêm với điểm thấp
-                            recommendations.append((company_code, -1, 0))
+                            recommendations.append((company_code, -1, 0, (rev_confidence + prof_confidence) / 2))
                     else:
                         # Không đủ dữ liệu
-                        recommendations.append((company_code, -2, 0))
+                        recommendations.append((company_code, -2, 0, 0))
             
-            # Sắp xếp các khuyến nghị theo điểm số
-            recommendations.sort(key=lambda x: x[2], reverse=True)
+            # Sắp xếp theo điểm tổng hợp
+            recommendations.sort(key=lambda x: (x[1], x[2]), reverse=True)
             
-            for i, (code, rating, score) in enumerate(recommendations):
-                f.write(f"  {i+1}. {COMPANIES[code]} ({code}): {rating}\n")
+            # Định nghĩa lại rating map với điều kiện chặt chẽ hơn
+            def get_rating(score, stability, confidence):
+                if confidence < 0.3:
+                    return "Không đủ dữ liệu đáng tin cậy"
+                
+                if score < -0.2:
+                    return "Không khuyến nghị"
+                elif score < 0:
+                    return "Nên theo dõi"
+                elif score < 0.05:
+                    if stability > 0.7:
+                        return "Trung lập (ổn định)"
+                    else:
+                        return "Trung lập"
+                elif score < 0.1:
+                    return "Khả quan"
+                elif score < 0.2:
+                    return "Tích cực"
+                else:
+                    return "Rất tích cực"
             
-            # Phân tích các chỉ số hiệu quả
-            f.write("\n● Chỉ số hiệu quả hoạt động:\n")
-
-            # ROE - Tỷ suất lợi nhuận trên vốn chủ sở hữu
-            f.write("\n  ROE - Tỷ suất lợi nhuận trên vốn chủ sở hữu (ROE):\n")
-            roe_data = []
-            for company_code, data in results.items():
-                roe_ind = "ROE - Tỷ suất lợi nhuận trên vốn chủ sở hữu"
-                if roe_ind in data and data[roe_ind]:
-                    roe_info = data[roe_ind]
-                    roe_data.append((company_code, roe_info['last_value'], roe_info['forecast_value'], roe_info['change_rate']))
-
-            # Sắp xếp theo giá trị ROE hiện tại
-            roe_data.sort(key=lambda x: x[1], reverse=True)
-            for code, current, forecast, change in roe_data:
-                trend = "↗" if change > 0.05 else "↘" if change < -0.05 else "→"
-                f.write(f"  {COMPANIES[code]} ({code}): Hiện tại: {current:.2f}%, Dự báo: {forecast:.2f}% {trend}\n")
-
-            # ROA - Tỷ suất lợi nhuận trên tổng tài sản
-            f.write("\n  ROA - Tỷ suất lợi nhuận trên tổng tài sản (ROA):\n")
-            roa_data = []
-            for company_code, data in results.items():
-                roa_ind = "ROA - Tỷ suất lợi nhuận trên tổng tài sản"
-                if roa_ind in data and data[roa_ind]:
-                    roa_info = data[roa_ind]
-                    roa_data.append((company_code, roa_info['last_value'], roa_info['forecast_value'], roa_info['change_rate']))
-
-            # Sắp xếp theo giá trị ROA hiện tại
-            roa_data.sort(key=lambda x: x[1], reverse=True)
-            for code, current, forecast, change in roa_data:
-                trend = "↗" if change > 0.05 else "↘" if change < -0.05 else "→"
-                f.write(f"  {COMPANIES[code]} ({code}): Hiện tại: {current:.2f}%, Dự báo: {forecast:.2f}% {trend}\n")
-
-            # Biên lợi nhuận gộp
-            f.write("\n  Biên lợi nhuận gộp:\n")
-            gross_margin_data = []
-            for company_code, data in results.items():
-                gross_margin_ind = "Biên lợi nhuận gộp"
-                if gross_margin_ind in data and data[gross_margin_ind]:
-                    gross_margin_info = data[gross_margin_ind]
-                    gross_margin_data.append((company_code, gross_margin_info['last_value'], gross_margin_info['forecast_value'], gross_margin_info['change_rate']))
-
-            # Sắp xếp theo giá trị biên lợi nhuận gộp hiện tại
-            gross_margin_data.sort(key=lambda x: x[1], reverse=True)
-            for code, current, forecast, change in gross_margin_data:
-                trend = "↗" if change > 0.05 else "↘" if change < -0.05 else "→"
-                f.write(f"  {COMPANIES[code]} ({code}): Hiện tại: {current:.2f}%, Dự báo: {forecast:.2f}% {trend}\n")
-
-            # Biên lợi nhuận ròng
-            f.write("\n  Biên lợi nhuận ròng:\n")
-            net_margin_data = []
-            for company_code, data in results.items():
-                net_margin_ind = "Biên lợi nhuận ròng"
-                if net_margin_ind in data and data[net_margin_ind]:
-                    net_margin_info = data[net_margin_ind]
-                    net_margin_data.append((company_code, net_margin_info['last_value'], net_margin_info['forecast_value'], net_margin_info['change_rate']))
-
-            # Sắp xếp theo giá trị biên lợi nhuận ròng hiện tại
-            net_margin_data.sort(key=lambda x: x[1], reverse=True)
-            for code, current, forecast, change in net_margin_data:
-                trend = "↗" if change > 0.05 else "↘" if change < -0.05 else "→"
-                f.write(f"  {COMPANIES[code]} ({code}): Hiện tại: {current:.2f}%, Dự báo: {forecast:.2f}% {trend}\n")
-
-            # Hệ số nợ
-            f.write("\n  Hệ số nợ:\n")
-            debt_ratio_data = []
-            for company_code, data in results.items():
-                debt_ratio_ind = "Hệ số nợ"
-                if debt_ratio_ind in data and data[debt_ratio_ind]:
-                    debt_ratio_info = data[debt_ratio_ind]
-                    debt_ratio_data.append((company_code, debt_ratio_info['last_value'], debt_ratio_info['forecast_value'], debt_ratio_info['change_rate']))
-
-            # Sắp xếp theo giá trị hệ số nợ hiện tại (thấp đến cao)
-            debt_ratio_data.sort(key=lambda x: x[1])
-            for code, current, forecast, change in debt_ratio_data:
-                trend = "↗" if change > 0.05 else "↘" if change < -0.05 else "→"
-                f.write(f"  {COMPANIES[code]} ({code}): Hiện tại: {current:.2f}%, Dự báo: {forecast:.2f}% {trend}\n")
-
+            for i, (code, score, stability, confidence) in enumerate(recommendations):
+                rating = get_rating(score, stability, confidence)
+                
+                rev_ind = "Doanh thu thuần về bán hàng và cung cấp dịch vụ (10 = 01 - 02)"
+                prof_ind = "Lợi nhuận sau thuế thu nhập doanh nghiệp(60=50-51-52)"
+                
+                # Thêm chỉ báo độ tin cậy
+                confidence_indicator = ""
+                if confidence < 0.3:
+                    confidence_indicator = " (độ tin cậy rất thấp)"
+                elif confidence < 0.5:
+                    confidence_indicator = " (độ tin cậy thấp)"
+                elif confidence > 0.8:
+                    confidence_indicator = " (độ tin cậy cao)"
+                
+                rev_trend = results[code][rev_ind]['trend'] if rev_ind in results[code] else "N/A"
+                prof_trend = results[code][prof_ind]['trend'] if prof_ind in results[code] else "N/A"
+                
+                f.write(f"  {i+1}. {COMPANIES[code]} ({code}): {rating}{confidence_indicator}\n")
+                
+                # Thêm chi tiết về dự báo
+                if rev_ind in results[code] and prof_ind in results[code]:
+                    rev_change = results[code][rev_ind]['change_rate'] * 100
+                    prof_change = results[code][prof_ind]['change_rate'] * 100
+                    f.write(f"     → Doanh thu: {rev_trend} ({rev_change:.1f}%), Lợi nhuận: {prof_trend} ({prof_change:.1f}%)\n")
+                else:
+                    f.write(f"     → Doanh thu: {rev_trend}, Lợi nhuận: {prof_trend}\n")
+            
         print(f"Đã tạo báo cáo tại: {report_path}")
         return report_path
     except Exception as e:
