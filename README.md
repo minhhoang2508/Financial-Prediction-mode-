@@ -16,7 +16,7 @@
 
 - **Phân tích nhiều chỉ số tài chính**: Doanh thu, lợi nhuận, vốn chủ sở hữu, tổng tài sản, v.v.
 - **Dự báo tiên tiến**: Sử dụng kết hợp 6 mô hình học máy để đạt độ chính xác cao nhất
-- **Trực quan hóa dữ liệu**: Biểu đồ dự báo, biểu đồ so sánh giữa các công ty
+- **Trực quan hóa dữ liệu**: Biểu đồ dự báo của 5 công ty
 - **Báo cáo phân tích chi tiết**: Xu hướng, tỷ lệ thay đổi, độ tin cậy dự báo
 - **Khuyến nghị đầu tư**: Đánh giá và xếp hạng các công ty dựa trên kết quả dự báo
 
